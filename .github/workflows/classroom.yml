@@ -5,7 +5,7 @@ on: [push]
 jobs:
   build:
     name: Autograding
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     container: cahirwpz/ii-so:latest
     steps:
       - uses: actions/checkout@v2
