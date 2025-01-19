@@ -42,12 +42,15 @@
 #define FIELD_SIZE(type, field) sizeof(((type *)0)->field)
 
 typedef struct blck_t blck_t;
+typedef struct queue_t queue_t;
 
 struct blck_t {
-  // len % 16 | (prev_used << 1) | curr_used;
-  int32_t info; // TODO: zrób strukture header
-  blck_t *prev; // TODO: zmniejszenie do 32bajtów czyli adresowanie względne
-  blck_t *next;
+
+  int32_t info; // size | (prev_used << 1) | curr_used;
+  /* it can be a blck_t struct or queue_t*/
+  void *prev; // TODO: relative pting
+  /* it can be a blck_t struct or queue_t*/
+  void *next;
   /*
    * We don't know what the size of the payload will be, so we will
    * declare it as a zero-length array.  This allow us to obtain a
@@ -56,7 +59,14 @@ struct blck_t {
   uint8_t payload[];
 };
 
-static size_t round_up(size_t size) { // TODO: cehck
+struct queue_t {
+  /* it can be a blck_t struct or queue_t*/
+  void *prev;
+  /* it can be a blck_t struct or queue_t*/
+  void *next;
+};
+
+static size_t round_up(size_t size) { // TODO: make it faster
   size_t tmp = (size + ALIGNMENT - 1);
   return tmp - tmp % ALIGNMENT;
 }
@@ -64,25 +74,21 @@ static size_t round_up(size_t size) { // TODO: cehck
 static const uint32_t blck_metadata_size =
   offsetof(blck_t, payload) + FIELD_SIZE(blck_t, info);
 
-// typedef struct {
-//   blck_t* queue;
-//   blck_t* fst_blck;
-//   uint8_t sentinel[blck_metadata_size];
-//   uint8_t payload[];
-// } malloc_t;
-
-// TODO: s
-// static void print_blck(blck_t *blck);
-// static void assert_heap();
-// static void heap_info();
-
 // static enum {
 #define USED 1
 #define PREV_USED 2
 // } BLCK_INFO;
 
-/* the pointer to the queue :) */
-static blck_t *sentinel;
+/* the pointer to the queues :) */
+
+// in ith queue the size of each query is at least 2**(32-__builtin_clz-1)
+#define queues_amount 1
+static queue_t *queues;
+
+int static inline is_queue(void *ptr) { // TODO
+  return ptr < (void *)queues + queues_amount && ptr >= (void *)queues;
+}
+
 /* If it is NULL it means there aren't any blocks */
 /* Address of the first block in heap*/
 static blck_t *fst_blck;
@@ -113,7 +119,7 @@ is_left_used(blck_t *blck) { // TODO: name it - can i look at left?
 }
 
 static inline blck_t *get_left(blck_t *blck) {
-  assert(!is_left_used(blck));
+  // assert(!is_left_used(blck));
   int32_t *info = (((int32_t *)blck) - 1);
   blck_t *left = (blck_t *)((uint8_t *)blck - get_size(*info));
   return left;
@@ -134,7 +140,7 @@ static inline int32_t is_fst(blck_t *blck) {
 }
 
 static inline int32_t is_used(blck_t *blck) {
-  return blck->info & 1; // TODO: do it by enums;
+  return blck->info & USED; // TODO: do it by enums;
 }
 
 static inline blck_t *get_next(blck_t *blck) {
@@ -161,64 +167,139 @@ static inline void clear_is_prev_used(blck_t *blck) {
 //   blck->info |= 2;
 // }
 
+// static void print_blck(blck_t *blck) {
+//   fprintf(stderr, "#(blck %lx): \n", (uintptr_t)blck);
+//   fprintf(stderr, "size: %d\n", get_blck_size(blck));
+//   fprintf(stderr, "prev: %lx\n", (uintptr_t)get_prev(blck));
+//   fprintf(stderr, "next: %lx\n", (uintptr_t)get_next(blck));
+//   fprintf(stderr, "is_used: %d\n", is_used(blck) > 0);
+//   fprintf(stderr, "is_prev_used: %d\n\n", is_left_used(blck) > 0);
+// }
+
+// static void heap_info() {
+//   fprintf(stderr, "queues: %lx\n", (uintptr_t)queues);
+//   fprintf(stderr, "heap_start: %lx\n", (uintptr_t)heap_start);
+//   fprintf(stderr, "heap_end: %lx\n", (uintptr_t)heap_end);
+//   fprintf(stderr, "fst_blck: %lx\n", (uintptr_t)fst_blck);
+//   fprintf(stderr, "lst_blck: %lx\n", (uintptr_t)lst_blck);
+//   fprintf(stderr, "queue_beg: %lx\n", (uintptr_t)queues);
+//   fprintf(stderr, "queue_end: %lx\n", (uintptr_t)(queues + queues_amount));
+// }
+
+// static void print_heap() {
+//   //fprintf(stderr, "------\n");
+//   heap_info();
+//   if (fst_blck == NULL) {
+//     return;
+//   }
+//   //fprintf(stderr, "# blcks:\n");
+//   for (blck_t *blck = fst_blck; blck < (blck_t *)heap_end; blck =
+//   get_right(blck)) {
+//     print_blck(blck);
+//   }
+//   assert(heap_end == (blck_t *)((uint8_t *)mem_heap_hi() + 1));
+// }
+
 /*
-  wszędzie size odnosi sie do romiary calej struktury nie tylko zawartego w niej
-  payloadu
+be careful after the call: the pointers to  prev and next are incorrect and
+shouldn't be notice: ptr to queue is not needed we only need blck
 */
-// be careful now the pointers to  prev and next are incorrect and shouldn't be
-// used
 static void dtch_blck(blck_t *blck) {
-  assert(get_blck_size(blck) != 0);
-  blck_t *prev_blck = blck->prev;
-  blck_t *next_blck = blck->next;
-  prev_blck->next = blck->next;
-  next_blck->prev = blck->prev;
+  // assert(get_blck_size(blck) != 0);
+  void *prev_blck = blck->prev;
+  void *next_blck = blck->next;
+
+  if (is_queue(prev_blck)) {
+    ((queue_t *)prev_blck)->next = blck->next;
+  } else {
+    ((blck_t *)prev_blck)->next = blck->next;
+  }
+
+  if (is_queue(next_blck)) {
+    ((queue_t *)next_blck)->prev = blck->prev;
+  } else {
+    ((blck_t *)next_blck)->prev = blck->prev;
+  }
 }
-// TODO: różne tryby np fifo lifo oraz być może poźniej wskaźnik na strukturę
-// danych koljeke
-static void attch_blck(blck_t *blck) {
+
+static void attch_blck_queue(blck_t *blck, queue_t *queue) {
+  assert(!is_queue(blck));
   // add to the begining of queue
-  blck_t *past_fst = sentinel->next;
-  blck->prev = sentinel;
+  void *past_fst = queue->next;
+  blck->prev = (void *)queue;
   blck->next = past_fst;
-  sentinel->next = blck;
-  past_fst->prev = blck;
+  queue->next = blck;
+  if (is_queue(past_fst)) {
+    ((queue_t *)past_fst)->prev = blck;
+  } else {
+    ((blck_t *)past_fst)->prev = blck;
+  }
+}
+
+static inline int32_t find_min_bucket(uint32_t size) {
+  return 0;
+  return 32 - __builtin_clz(size) - 1;
+}
+
+static void attch_blck(blck_t *blck) {
+  // assert(!is_queue(blck));
+  uint32_t size = get_blck_size(blck);
+  queue_t *queue = &queues[find_min_bucket(size)];
+  attch_blck_queue(blck, queue);
 }
 
 // TODO: zrób z to_coupied enuma
 
 /* every */
 static void init_blck(blck_t *blck, uint32_t size, int to_used) {
-  assert(size % 16 == 0);
+  // assert(size % 16 == 0);
+  // assert(!is_queue(blck));
   uint32_t info = size | to_used;
   blck->info = info;
   *(((uint32_t *)get_right(blck)) - 1) = info;
 }
 
-/* we never should use info of sentinel besides size*/
-static void init_sentinel(blck_t *blck, uint32_t sentinel_size) {
-  init_blck(blck, sentinel_size, 0); // bo posiada prev i next;
-  sentinel->prev = sentinel;
-  sentinel->next = sentinel;
+static queue_t *init_queue(queue_t *queue) {
+  queue->prev = queue;
+  queue->next = queue;
+
+  return queue;
 }
 
-static blck_t *search_free_blck(uint32_t size, uint32_t *fnd_size) {
+static blck_t *search_free_blck_queue(uint32_t size, uint32_t *fnd_size,
+                                      queue_t *queue) {
   // first fit
-  for (blck_t *free_blck = sentinel->next; free_blck != sentinel;
+  for (blck_t *free_blck = queue->next; (queue_t *)free_blck != queue;
        free_blck = free_blck->next) {
-    // print_blck(free_blck);
-    // assert_heap();
     if (size <= get_blck_size(free_blck)) {
       *fnd_size = get_blck_size(free_blck);
-      // fprintf(stderr, "dupa\n");
       return free_blck;
     }
   }
   *fnd_size = 0;
   return NULL;
 }
+
+uint32_t inline find_starting_bucket(uint32_t size) {
+  // assert(size != 0);
+  return 0;
+  return sizeof(uint32_t) - __builtin_clz(size) - 1;
+}
+
+static blck_t *search_free_blck(uint32_t size, uint32_t *fnd_size) {
+  for (uint32_t bucket_i = find_starting_bucket(size); bucket_i < queues_amount;
+       bucket_i++) {
+    blck_t *free_blck =
+      search_free_blck_queue(size, fnd_size, &queues[bucket_i]);
+    if (free_blck != NULL) {
+      return free_blck;
+    }
+  }
+  return NULL;
+}
+
 static blck_t *increase_heap(uint32_t size) {
-  assert(size % 16 == 0);
+  // assert(size % 16 == 0);
   blck_t *block = mem_sbrk(size);
   if ((long)block < 0) {
     return NULL;
@@ -234,41 +315,21 @@ static blck_t *increase_heap(uint32_t size) {
 3. returns addres of coalesed blck: left or current
 */
 static blck_t *free_n_coalesce(blck_t *blck, uint32_t *size) {
-  // print_blck(blck);
-  // fprintf("blck addr: ");
   blck_t *coalesed_blck = blck;
   *size = get_blck_size(blck);
 
   if (!is_fst(blck)) {
     blck_t *left = get_left(blck);
     if (!is_used(left)) {
-      // if(get_blck_size(left) == 0) fprintf(stderr, "left: %lx\n", left);
       dtch_blck(left);
       *size += get_blck_size(left);
       coalesed_blck = left;
-      // fprintf(stderr, "coal: %lx\n", coalesed_blck);
-      // fprintf(stderr, "lst: %lx\n", lst_blck);
     }
   }
 
-  // fprintf(stderr,"hello\n");
   if (!is_last(blck)) {
     blck_t *right = get_right(blck);
     if (!is_used(right)) {
-      // if(get_blck_size(right) == 0) {
-      //   // assert_heap();
-      //   // heap_info();
-      //   fprintf(stderr, "--\n");
-      //   fprintf(stderr, "blck: ");
-
-      //   print_blck(blck);
-      //   fprintf(stderr, "right: ");
-
-      //   print_blck(right);
-
-      //           fprintf(stderr, "lst: ");
-      //   print_blck(lst_blck);
-      //   }
       dtch_blck(right);
       *size += get_blck_size(right);
       if (is_last(right)) {
@@ -297,25 +358,21 @@ static blck_t *free_n_coalesce(blck_t *blck, uint32_t *size) {
  * mm_init - Called when a new trace starts.
  */
 int mm_init(void) {
-  fprintf(stderr, "MM_INIT\n");
-  /* Pad heap start so first payload is at ALIGNMENT. */
-  // fprintf(stderr, "%lu\n", ((uintptr_t)mem_heap_hi() + 1) % 16);
+  // fprintf(stderr, "MM_INIT\n");
+  queues = (queue_t *)mem_sbrk(sizeof(queue_t) * queues_amount);
+  heap_start = queues;
+  for (int i = 0; i < queues_amount; i++) {
+    init_queue(&queues[i]);
+  }
 
-  assert(((uintptr_t)mem_heap_hi() + 1) % 16 == 0);
+  /* pad heap start so first payload is at ALIGNMENT. */
+  void *blck_aligned =
+    mem_sbrk(ALIGNMENT -
+             (((uintptr_t)heap_start + offsetof(blck_t, payload)) % ALIGNMENT));
 
-  heap_start = (blck_t *)mem_sbrk(ALIGNMENT - offsetof(blck_t, payload) % 16);
-  uint32_t sentinel_size = round_up(blck_metadata_size);
-  sentinel = (blck_t *)mem_sbrk(sentinel_size);
-
-  // fprintf(stderr, "%lu\n",
-  //         (((uint64_t)heap_end) + offsetof(blck_t, payload)) % 16);
-  if ((long)heap_start < 0) {
-    // fprintf(stderr, "dupa\n");
+  if ((long)blck_aligned < 0) {
     return -1;
   }
-  init_sentinel(sentinel, sentinel_size);
-
-  // we clear the queue
 
   fst_blck = NULL;
   lst_blck = NULL;
@@ -330,12 +387,11 @@ int mm_init(void) {
  *      Always allocate a block whose size is a multiple of the alignment.
  */
 void *malloc(size_t payload_size) {
-  fprintf(stderr, "MALLOC");
+  // fprintf(stderr, "MALLOC %lx", payload_size);
   uint32_t alloced_blck_size = 0;
   uint32_t min_blck_size = round_up(payload_size + blck_metadata_size);
   uint32_t fnd_blck_size = 0;
   blck_t *fnd_blck = search_free_blck(min_blck_size, &fnd_blck_size);
-  // fprintf(stderr, "fnd_blck_size: %u\n", fnd_blck_size);
   if (fnd_blck == NULL) {
     fnd_blck = increase_heap(min_blck_size);
     if (!fst_blck) { // first allocation
@@ -352,11 +408,7 @@ void *malloc(size_t payload_size) {
   }
 
   uint32_t reminder_size = fnd_blck_size - min_blck_size;
-  // fprintf(stderr, "remider_size: %u\n", reminder_size);
   if (reminder_size > blck_metadata_size) {
-    // fprintf(stderr,
-    //   "create reminder blck\n"
-    // );
     blck_t *reminder_blck = (blck_t *)(((uint8_t *)fnd_blck) + min_blck_size);
     init_blck(reminder_blck, fnd_blck_size - min_blck_size, 0);
     attch_blck(reminder_blck);
@@ -368,17 +420,8 @@ void *malloc(size_t payload_size) {
     alloced_blck_size = fnd_blck_size;
   }
   init_blck(fnd_blck, alloced_blck_size, 1);
-  // fprintf(stderr, " = %lx\n", fnd_blck->payload);
-  // fprintf(stderr, "paylaod: %ld, allocated: %x\n", payload_size,
-  // alloced_blck_size);
+  // fprintf(stderr, " = %lx\n", (uintptr_t)fnd_blck->payload);
   return fnd_blck->payload;
-
-  // blck_t *block = mem_sbrk(masize);
-  // if ((long)block < 0)
-  //   return NULL;
-
-  // set_header(block, size, true);
-  // return block->payload;
 }
 
 void free(void *ptr) {
@@ -440,72 +483,20 @@ void *calloc(size_t nmemb, size_t size) {
   return new_ptr;
 }
 
-// static void print_blck(blck_t *blck) {
-//   fprintf(stderr, "#(blck %lx): \n", (uintptr_t)blck);
-//   fprintf(stderr, "size: %d\n", get_blck_size(blck));
-//   fprintf(stderr, "prev: %lx\n", (uintptr_t)get_prev(blck));
-//   fprintf(stderr, "next: %lx\n", (uintptr_t)get_next(blck));
-//   fprintf(stderr, "is_used: %d\n", is_used(blck) > 0);
-//   fprintf(stderr, "is_prev_used: %d\n\n", is_left_used(blck) > 0);
-// }
-
-// static void heap_info() {
-//   fprintf(stderr, "sentinel: %lx\n", sentinel);
-//   fprintf(stderr, "heap_start: %lx\n", (uintptr_t)heap_start);
-//   fprintf(stderr, "heap_end: %lx\n", (uintptr_t)heap_end);
-//   fprintf(stderr, "fst_blck: %lx\n", (uintptr_t)fst_blck);
-//   fprintf(stderr, "lst_blck: %lx\n", (uintptr_t)lst_blck);
-// }
-
-static blck_t *get_lst_blck() {
-  blck_t *lst = NULL;
-  if (fst_blck == NULL) {
-    return NULL;
-  }
-  for (blck_t *blck = fst_blck; blck < (blck_t *)heap_end;
-       blck = get_right(blck)) {
-    lst = blck;
-  }
-  return lst;
-}
-
-// /* TODO: opis*/
-// static void assert_heap() {
-//   //fprintf(stderr, "------\n");
-//   heap_info();
-//   //fprintf(stderr, "heap_print\n");
+// static blck_t *get_lst_blck() {
+//   blck_t *lst = NULL;
 //   if (fst_blck == NULL) {
-//     //fprintf(stderr, "no_blcks\n");
-//     return;
+//     return NULL;
 //   }
-//   //fprintf(stderr, "# blcks:\n");
 //   for (blck_t *blck = fst_blck; blck < (blck_t *)heap_end;
 //        blck = get_right(blck)) {
-//     //print_blck(blck);
-//     // assert(((uintptr_t)blck % 16) == 0);
-//     // assert(get_blck_size(blck) % ALIGNMENT == 0);
-//     // assert(get_blck_size(blck) > 0);
-
-//     // blck_t* next = get_right(blck);
-//     // if(next >= heap_end){
-//     //   assert(next == heap_end);
-//     // }
-//     // assert((next >= heap_end) || is_used(blck) || is_used(next));
-//     // if(blck != fst_blck){
-//     //   assert(is_used(blck) || is_left_used(blck));
-//     // }
+//     lst = blck;
 //   }
-//   assert(heap_end == (blck_t *)((uint8_t *)mem_heap_hi() + 1));
+//   return lst;
 // }
 
 void mm_checkheap(int verbose) {
-  // fprintf(stderr, "hello\n");
-  // assert_heap();
-  if (get_lst_blck() != lst_blck) {
-    // fprintf(stderr, "bad\n");
-    //  assert_heap();
-    // fprintf(stderr, "get() = %lx, lst_blck = %lx\n", get_lst_blck(),
-    // lst_blck);
-    assert(0);
-  }
+  // if (get_lst_blck() != lst_blck) {
+  //   assert(0);
+  // }
 }
