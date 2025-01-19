@@ -72,14 +72,14 @@ static const uint32_t blck_metadata_size =
 // } malloc_t;
 
 // TODO: s
-static void print_blck(blck_t *blck);
-static void assert_heap();
-static void heap_info();
+// static void print_blck(blck_t *blck);
+// static void assert_heap();
+// static void heap_info();
 
-static enum {
-  USED = 1,
-  PREV_USED = 2,
-} BLCK_INFO;
+// static enum {
+#define USED  1
+#define PREV_USED  2
+// } BLCK_INFO;
 
 /* the pointer to the queue :) */
 static blck_t *sentinel;
@@ -246,8 +246,8 @@ static blck_t *free_n_coalesce(blck_t *blck, uint32_t *size) {
       dtch_blck(left);
       *size += get_blck_size(left);
       coalesed_blck = left;
-      fprintf(stderr, "coal: %lx\n", coalesed_blck);
-      fprintf(stderr, "lst: %lx\n", lst_blck);
+      // fprintf(stderr, "coal: %lx\n", coalesed_blck);
+      // fprintf(stderr, "lst: %lx\n", lst_blck);
     }
   }
 
@@ -307,8 +307,8 @@ int mm_init(void) {
   uint32_t sentinel_size = round_up(blck_metadata_size);
   sentinel = (blck_t *)mem_sbrk(sentinel_size);
 
-  fprintf(stderr, "%lu\n",
-          (((uint64_t)heap_end) + offsetof(blck_t, payload)) % 16);
+  // fprintf(stderr, "%lu\n",
+  //         (((uint64_t)heap_end) + offsetof(blck_t, payload)) % 16);
   if ((long)heap_start < 0) {
     // fprintf(stderr, "dupa\n");
     return -1;
@@ -368,7 +368,7 @@ void *malloc(size_t payload_size) {
     alloced_blck_size = fnd_blck_size;
   }
   init_blck(fnd_blck, alloced_blck_size, 1);
-  fprintf(stderr, " = %lx\n", fnd_blck->payload);
+  // fprintf(stderr, " = %lx\n", fnd_blck->payload);
   // fprintf(stderr, "paylaod: %ld, allocated: %x\n", payload_size,
   // alloced_blck_size);
   return fnd_blck->payload;
@@ -384,7 +384,7 @@ void *malloc(size_t payload_size) {
 void free(void *ptr) {
   if (ptr == NULL)
     return;
-  fprintf(stderr, "FREE %lx\n", (uintptr_t)ptr);
+  // fprintf(stderr, "FREE %lx\n", (uintptr_t)ptr);
   blck_t *fnd_blck = (blck_t *)((uint8_t *)ptr - (offsetof(blck_t, payload)));
   uint32_t coalesced_blck_size;
   blck_t *coalesced_blck = free_n_coalesce(fnd_blck, &coalesced_blck_size);
@@ -440,22 +440,22 @@ void *calloc(size_t nmemb, size_t size) {
   return new_ptr;
 }
 
-static void print_blck(blck_t *blck) {
-  fprintf(stderr, "#(blck %lx): \n", (uintptr_t)blck);
-  fprintf(stderr, "size: %d\n", get_blck_size(blck));
-  fprintf(stderr, "prev: %lx\n", (uintptr_t)get_prev(blck));
-  fprintf(stderr, "next: %lx\n", (uintptr_t)get_next(blck));
-  fprintf(stderr, "is_used: %d\n", is_used(blck) > 0);
-  fprintf(stderr, "is_prev_used: %d\n\n", is_left_used(blck) > 0);
-}
+// static void print_blck(blck_t *blck) {
+//   fprintf(stderr, "#(blck %lx): \n", (uintptr_t)blck);
+//   fprintf(stderr, "size: %d\n", get_blck_size(blck));
+//   fprintf(stderr, "prev: %lx\n", (uintptr_t)get_prev(blck));
+//   fprintf(stderr, "next: %lx\n", (uintptr_t)get_next(blck));
+//   fprintf(stderr, "is_used: %d\n", is_used(blck) > 0);
+//   fprintf(stderr, "is_prev_used: %d\n\n", is_left_used(blck) > 0);
+// }
 
-static void heap_info() {
-  fprintf(stderr, "sentinel: %lx\n", sentinel);
-  fprintf(stderr, "heap_start: %lx\n", (uintptr_t)heap_start);
-  fprintf(stderr, "heap_end: %lx\n", (uintptr_t)heap_end);
-  fprintf(stderr, "fst_blck: %lx\n", (uintptr_t)fst_blck);
-  fprintf(stderr, "lst_blck: %lx\n", (uintptr_t)lst_blck);
-}
+// static void heap_info() {
+//   fprintf(stderr, "sentinel: %lx\n", sentinel);
+//   fprintf(stderr, "heap_start: %lx\n", (uintptr_t)heap_start);
+//   fprintf(stderr, "heap_end: %lx\n", (uintptr_t)heap_end);
+//   fprintf(stderr, "fst_blck: %lx\n", (uintptr_t)fst_blck);
+//   fprintf(stderr, "lst_blck: %lx\n", (uintptr_t)lst_blck);
+// }
 
 static blck_t *get_lst_blck() {
   blck_t *lst = NULL;
@@ -470,41 +470,41 @@ static blck_t *get_lst_blck() {
 }
 
 // /* TODO: opis*/
-static void assert_heap() {
-  fprintf(stderr, "------\n");
-  heap_info();
-  fprintf(stderr, "heap_print\n");
-  if (fst_blck == NULL) {
-    fprintf(stderr, "no_blcks\n");
-    return;
-  }
-  fprintf(stderr, "# blcks:\n");
-  for (blck_t *blck = fst_blck; blck < (blck_t *)heap_end;
-       blck = get_right(blck)) {
-    print_blck(blck);
-    // assert(((uintptr_t)blck % 16) == 0);
-    // assert(get_blck_size(blck) % ALIGNMENT == 0);
-    // assert(get_blck_size(blck) > 0);
+// static void assert_heap() {
+//   //fprintf(stderr, "------\n");
+//   heap_info();
+//   //fprintf(stderr, "heap_print\n");
+//   if (fst_blck == NULL) {
+//     //fprintf(stderr, "no_blcks\n");
+//     return;
+//   }
+//   //fprintf(stderr, "# blcks:\n");
+//   for (blck_t *blck = fst_blck; blck < (blck_t *)heap_end;
+//        blck = get_right(blck)) {
+//     //print_blck(blck);
+//     // assert(((uintptr_t)blck % 16) == 0);
+//     // assert(get_blck_size(blck) % ALIGNMENT == 0);
+//     // assert(get_blck_size(blck) > 0);
 
-    // blck_t* next = get_right(blck);
-    // if(next >= heap_end){
-    //   assert(next == heap_end);
-    // }
-    // assert((next >= heap_end) || is_used(blck) || is_used(next));
-    // if(blck != fst_blck){
-    //   assert(is_used(blck) || is_left_used(blck));
-    // }
-  }
-  assert(heap_end == (blck_t *)((uint8_t *)mem_heap_hi() + 1));
-}
+//     // blck_t* next = get_right(blck);
+//     // if(next >= heap_end){
+//     //   assert(next == heap_end);
+//     // }
+//     // assert((next >= heap_end) || is_used(blck) || is_used(next));
+//     // if(blck != fst_blck){
+//     //   assert(is_used(blck) || is_left_used(blck));
+//     // }
+//   }
+//   assert(heap_end == (blck_t *)((uint8_t *)mem_heap_hi() + 1));
+// }
 
 void mm_checkheap(int verbose) {
   // fprintf(stderr, "hello\n");
   // assert_heap();
   if (get_lst_blck() != lst_blck) {
-    fprintf(stderr, "bad\n");
+    //fprintf(stderr, "bad\n");
     // assert_heap();
-    fprintf(stderr, "get() = %lx, lst_blck = %lx\n", get_lst_blck(), lst_blck);
+    //fprintf(stderr, "get() = %lx, lst_blck = %lx\n", get_lst_blck(), lst_blck);
     assert(0);
   }
 }
