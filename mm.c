@@ -66,7 +66,7 @@ struct queue_t {
   void *next;
 };
 
-static size_t round_up(size_t size) { // TODO: make it faster
+static inline size_t round_up(size_t size) { // TODO: make it faster
   size_t tmp = (size + ALIGNMENT - 1);
   return tmp - tmp % ALIGNMENT;
 }
@@ -85,7 +85,7 @@ static const uint32_t blck_metadata_size =
 #define queues_amount 1
 static queue_t *queues;
 
-int static inline is_queue(void *ptr) { // TODO
+int static inline is_queue(void *ptr) {
   return ptr < (void *)queues + queues_amount && ptr >= (void *)queues;
 }
 
@@ -248,10 +248,9 @@ static void attch_blck(blck_t *blck) {
   attch_blck_queue(blck, queue);
 }
 
-// TODO: zrób z to_coupied enuma
 
 /* every */
-static void init_blck(blck_t *blck, uint32_t size, int to_used) {
+static inline void init_blck(blck_t *blck, uint32_t size, int to_used) {
   // assert(size % 16 == 0);
   // assert(!is_queue(blck));
   uint32_t info = size | to_used;
@@ -266,7 +265,7 @@ static queue_t *init_queue(queue_t *queue) {
   return queue;
 }
 
-static blck_t *search_free_blck_queue(uint32_t size, uint32_t *fnd_size,
+static inline blck_t *search_free_blck_queue(uint32_t size, uint32_t *fnd_size,
                                       queue_t *queue) {
   // first fit
   for (blck_t *free_blck = queue->next; (queue_t *)free_blck != queue;
@@ -280,13 +279,13 @@ static blck_t *search_free_blck_queue(uint32_t size, uint32_t *fnd_size,
   return NULL;
 }
 
-uint32_t inline find_starting_bucket(uint32_t size) {
+static inline uint32_t  find_starting_bucket(uint32_t size) {
   // assert(size != 0);
   return 0;
   return sizeof(uint32_t) - __builtin_clz(size) - 1;
 }
 
-static blck_t *search_free_blck(uint32_t size, uint32_t *fnd_size) {
+static inline blck_t *search_free_blck(uint32_t size, uint32_t *fnd_size) {
   for (uint32_t bucket_i = find_starting_bucket(size); bucket_i < queues_amount;
        bucket_i++) {
     blck_t *free_blck =
@@ -298,7 +297,7 @@ static blck_t *search_free_blck(uint32_t size, uint32_t *fnd_size) {
   return NULL;
 }
 
-static blck_t *increase_heap(uint32_t size) {
+static inline blck_t *increase_heap(uint32_t size) {
   // assert(size % 16 == 0);
   blck_t *block = mem_sbrk(size);
   if ((long)block < 0) {
@@ -313,8 +312,9 @@ static blck_t *increase_heap(uint32_t size) {
 1. coalesce block that can be coalesced
 2. clears is_prev_used on right if right is used
 3. returns addres of coalesed blck: left or current
+4. changes lst_blck
 */
-static blck_t *free_n_coalesce(blck_t *blck, uint32_t *size) {
+static inline blck_t *free_n_coalesce(blck_t *blck, uint32_t *size) {
   blck_t *coalesed_blck = blck;
   *size = get_blck_size(blck);
 
