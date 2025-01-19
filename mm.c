@@ -46,11 +46,11 @@ typedef struct queue_t queue_t;
 
 struct blck_t {
 
-  int32_t info; // size | (prev_used << 1) | curr_used;
+  uint32_t info; // size | (prev_used << 1) | curr_used;
   /* it can be a blck_t struct or queue_t*/
-  void *prev; // TODO: relative pting
+  uint32_t prev; // TODO: relative pting
   /* it can be a blck_t struct or queue_t*/
-  void *next;
+  uint32_t next;
   /*
    * We don't know what the size of the payload will be, so we will
    * declare it as a zero-length array.  This allow us to obtain a
@@ -61,9 +61,9 @@ struct blck_t {
 
 struct queue_t {
   /* it can be a blck_t struct or queue_t*/
-  void *prev;
+  uint32_t prev;
   /* it can be a blck_t struct or queue_t*/
-  void *next;
+  uint32_t next;
 };
 
 static inline size_t round_up(size_t size) { // TODO: make it faster
@@ -74,7 +74,7 @@ static inline size_t round_up(size_t size) { // TODO: make it faster
 static const uint32_t blck_metadata_size =
   offsetof(blck_t, payload) + FIELD_SIZE(blck_t, info);
 
-// static enum {
+// static enum { //TODO:
 #define USED 1
 #define PREV_USED 2
 // } BLCK_INFO;
@@ -85,7 +85,7 @@ static const uint32_t blck_metadata_size =
 #define queues_amount 1
 static queue_t *queues;
 
-int static inline is_queue(void *ptr) {
+static inline int is_queue(void *ptr) {
   return ptr < (void *)queues + queues_amount && ptr >= (void *)queues;
 }
 
@@ -144,11 +144,11 @@ static inline int32_t is_used(blck_t *blck) {
 }
 
 static inline blck_t *get_next(blck_t *blck) {
-  return blck->next;
+  return blck->next + heap_start;
 }
 
 static inline blck_t *get_prev(blck_t *blck) {
-  return blck->prev;
+  return blck->prev + heap_start;
 }
 
 // static inline void clear_is_used(blck_t * blck){
@@ -206,8 +206,8 @@ shouldn't be notice: ptr to queue is not needed we only need blck
 */
 static void dtch_blck(blck_t *blck) {
   // assert(get_blck_size(blck) != 0);
-  void *prev_blck = blck->prev;
-  void *next_blck = blck->next;
+  void *prev_blck = heap_start + blck->prev;
+  void *next_blck = heap_start + blck->next;
 
   if (is_queue(prev_blck)) {
     ((queue_t *)prev_blck)->next = blck->next;
@@ -225,14 +225,14 @@ static void dtch_blck(blck_t *blck) {
 static void attch_blck_queue(blck_t *blck, queue_t *queue) {
   assert(!is_queue(blck));
   // add to the begining of queue
-  void *past_fst = queue->next;
-  blck->prev = (void *)queue;
-  blck->next = past_fst;
-  queue->next = blck;
+  void *past_fst = heap_start + queue->next;
+  blck->prev = (uint32_t)((uintptr_t)queue - (uintptr_t)heap_start);
+  blck->next = queue->next; // past_fst - heap_start
+  queue->next = (uint32_t)((uintptr_t)blck - (uintptr_t)heap_start);
   if (is_queue(past_fst)) {
-    ((queue_t *)past_fst)->prev = blck;
+    ((blck_t *)past_fst)->prev = (uint32_t)((uintptr_t)blck - (uintptr_t)heap_start);
   } else {
-    ((blck_t *)past_fst)->prev = blck;
+    ((blck_t *)past_fst)->prev = (uint32_t)((uintptr_t)blck - (uintptr_t)heap_start);
   }
 }
 
@@ -259,8 +259,9 @@ static inline void init_blck(blck_t *blck, uint32_t size, int to_used) {
 }
 
 static queue_t *init_queue(queue_t *queue) {
-  queue->prev = queue;
-  queue->next = queue;
+  uint32_t rel_queue = (uint32_t)((uintptr_t)queue - (uintptr_t)heap_start);
+  queue->prev = rel_queue;
+  queue->next = rel_queue;
 
   return queue;
 }
@@ -268,8 +269,8 @@ static queue_t *init_queue(queue_t *queue) {
 static inline blck_t *search_free_blck_queue(uint32_t size, uint32_t *fnd_size,
                                       queue_t *queue) {
   // first fit
-  for (blck_t *free_blck = queue->next; (queue_t *)free_blck != queue;
-       free_blck = free_blck->next) {
+  for (blck_t *free_blck = heap_start + queue->next; (queue_t *)free_blck != queue;
+       free_blck = heap_start + free_blck->next) {
     if (size <= get_blck_size(free_blck)) {
       *fnd_size = get_blck_size(free_blck);
       return free_blck;
@@ -368,7 +369,7 @@ int mm_init(void) {
   /* pad heap start so first payload is at ALIGNMENT. */
   void *blck_aligned =
     mem_sbrk(ALIGNMENT -
-             (((uintptr_t)heap_start + offsetof(blck_t, payload)) % ALIGNMENT));
+             (((uintptr_t)&queues[queues_amount] + offsetof(blck_t, payload)) % ALIGNMENT));
 
   if ((long)blck_aligned < 0) {
     return -1;
