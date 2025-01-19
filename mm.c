@@ -77,8 +77,8 @@ static const uint32_t blck_metadata_size =
 // static void heap_info();
 
 // static enum {
-#define USED  1
-#define PREV_USED  2
+#define USED 1
+#define PREV_USED 2
 // } BLCK_INFO;
 
 /* the pointer to the queue :) */
@@ -502,9 +502,10 @@ void mm_checkheap(int verbose) {
   // fprintf(stderr, "hello\n");
   // assert_heap();
   if (get_lst_blck() != lst_blck) {
-    //fprintf(stderr, "bad\n");
-    // assert_heap();
-    //fprintf(stderr, "get() = %lx, lst_blck = %lx\n", get_lst_blck(), lst_blck);
+    // fprintf(stderr, "bad\n");
+    //  assert_heap();
+    // fprintf(stderr, "get() = %lx, lst_blck = %lx\n", get_lst_blck(),
+    // lst_blck);
     assert(0);
   }
 }
