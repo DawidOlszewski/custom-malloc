@@ -68,7 +68,7 @@ struct queue_t {
 
 static inline size_t round_up(size_t size) { // TODO: make it faster
   size_t tmp = (size + ALIGNMENT - 1);
-  return tmp - tmp % ALIGNMENT;
+  return tmp & -ALIGNMENT;
 }
 
 static const uint32_t blck_metadata_size =
@@ -129,6 +129,10 @@ static inline blck_t *get_left(blck_t *blck) {
 static inline blck_t *get_right(blck_t *blck) {
   blck_t *right = (blck_t *)((uint8_t *)blck + (get_blck_size(blck)));
   return right;
+}
+
+static inline blck_t *get_blck_from_payload(void* payload){
+  return (blck_t*) ((uintptr_t)payload-offsetof(blck_t,payload));
 }
 
 static inline int32_t is_last(blck_t *blck) {
@@ -383,6 +387,10 @@ int mm_init(void) {
   return 0;
 }
 
+// inline uint64_t max(uint64_t x, uint64_t y){
+//   if(x > y) return x;
+//   return y;
+// }
 /*
  * malloc - Allocate a block by incrementing the brk pointer.
  *      Always allocate a block whose size is a multiple of the alignment.
@@ -390,6 +398,7 @@ int mm_init(void) {
 void *malloc(size_t payload_size) {
   // fprintf(stderr, "MALLOC %lx", payload_size);
   uint32_t alloced_blck_size = 0;
+  // uint32_t min_blck_size = round_up(max(payload_size + offsetof(blck_t,payload),blck_metadata_size));
   uint32_t min_blck_size = round_up(payload_size + blck_metadata_size);
   uint32_t fnd_blck_size = 0;
   blck_t *fnd_blck = search_free_blck(min_blck_size, &fnd_blck_size);
@@ -450,6 +459,11 @@ void *realloc(void *old_ptr, size_t size) {
   /* If old_ptr is NULL, then this is just malloc. */
   if (!old_ptr)
     return malloc(size);
+
+  /* Check if you got enough space */
+  if(get_blck_size(get_blck_from_payload(old_ptr))-blck_metadata_size > size){
+    return old_ptr;
+  }
 
   void *new_ptr = malloc(size);
 
